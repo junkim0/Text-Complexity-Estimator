@@ -2,11 +2,12 @@ import os
 import json
 import torch
 import numpy as np
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, request, jsonify, render_template, send_file
 from transformers import AutoTokenizer
-from train import TextComplexityModel
 import pandas as pd
-from datetime import datetime
+from train import TextComplexityModel
+import io
+import base64
 
 app = Flask(__name__)
 
@@ -14,21 +15,18 @@ app = Flask(__name__)
 model = None
 tokenizer = None
 config = None
-device = None
 
 def load_model():
-    """Load the trained model"""
-    global model, tokenizer, config, device
+    """Load the trained model and configuration"""
+    global model, tokenizer, config
     
     model_dir = 'model/best'
     
-    if not os.path.exists(model_dir):
-        return False, "Model not found. Please train the model first."
+    # Check if model files exist
+    if not os.path.exists(os.path.join(model_dir, 'best_model.pth')):
+        return False, "Model files not found. Please train the model first."
     
     try:
-        # Set device
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        
         # Load configuration
         with open(os.path.join(model_dir, 'config.json'), 'r') as f:
             config = json.load(f)
@@ -38,20 +36,16 @@ def load_model():
         
         # Initialize model
         model = TextComplexityModel(config['model_name'])
-        model.load_state_dict(torch.load(os.path.join(model_dir, 'best_model.pth'), map_location=device))
-        model.to(device)
+        model.load_state_dict(torch.load(os.path.join(model_dir, 'best_model.pth'), map_location='cpu'))
         model.eval()
         
         return True, "Model loaded successfully"
-    
     except Exception as e:
         return False, f"Error loading model: {str(e)}"
 
 def predict_complexity(text):
-    """Predict complexity score for text"""
-    global model, tokenizer, config, device
-    
-    if model is None:
+    """Predict complexity score for a single text"""
+    if model is None or tokenizer is None:
         return None, "Model not loaded"
     
     try:
@@ -64,42 +58,37 @@ def predict_complexity(text):
             return_tensors='pt'
         )
         
-        # Move to device
-        input_ids = encoding['input_ids'].to(device)
-        attention_mask = encoding['attention_mask'].to(device)
-        
         # Make prediction
         with torch.no_grad():
-            _, prediction = model(input_ids, attention_mask)
+            _, prediction = model(encoding['input_ids'], encoding['attention_mask'])
             prediction = prediction.cpu().numpy()
         
         return prediction, None
-    
     except Exception as e:
-        return None, f"Error making prediction: {str(e)}"
+        return None, f"Prediction error: {str(e)}"
 
 def interpret_complexity(score):
     """Interpret the complexity score"""
     if score < 0.3:
         level = "Beginner"
         description = "Very simple text, suitable for early readers"
-        color = "#28a745"  # Green
+        color = "#28a745"
     elif score < 0.5:
         level = "Elementary"
         description = "Simple text with basic vocabulary and structure"
-        color = "#17a2b8"  # Blue
+        color = "#17a2b8"
     elif score < 0.7:
         level = "Intermediate"
         description = "Moderate complexity with varied vocabulary"
-        color = "#ffc107"  # Yellow
+        color = "#ffc107"
     elif score < 0.85:
         level = "Advanced"
         description = "Complex text with sophisticated language"
-        color = "#fd7e14"  # Orange
+        color = "#fd7e14"
     else:
         level = "Expert"
         description = "Very complex text requiring advanced reading skills"
-        color = "#dc3545"  # Red
+        color = "#dc3545"
     
     return level, description, color
 
@@ -110,59 +99,46 @@ def index():
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    """API endpoint for text complexity prediction"""
+    """Single text prediction endpoint"""
     try:
         data = request.get_json()
         text = data.get('text', '').strip()
         
         if not text:
-            return jsonify({
-                'success': False,
-                'error': 'No text provided'
-            })
+            return jsonify({'success': False, 'error': 'No text provided'})
         
         # Make prediction
         prediction, error = predict_complexity(text)
-        
         if error:
-            return jsonify({
-                'success': False,
-                'error': error
-            })
+            return jsonify({'success': False, 'error': error})
         
         # Interpret result
         level, description, color = interpret_complexity(prediction)
         
         return jsonify({
             'success': True,
-            'text': text,
             'score': float(prediction),
             'level': level,
             'description': description,
             'color': color,
-            'timestamp': datetime.now().isoformat()
+            'progress': int(prediction * 100)
         })
-    
+        
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': f'Server error: {str(e)}'
-        })
+        return jsonify({'success': False, 'error': f'Server error: {str(e)}'})
 
 @app.route('/batch_predict', methods=['POST'])
 def batch_predict():
-    """API endpoint for batch text complexity prediction"""
+    """Batch prediction endpoint"""
     try:
         data = request.get_json()
         texts = data.get('texts', [])
         
         if not texts:
-            return jsonify({
-                'success': False,
-                'error': 'No texts provided'
-            })
+            return jsonify({'success': False, 'error': 'No texts provided'})
         
         results = []
+        successful = 0
         
         for text in texts:
             text = text.strip()
@@ -170,131 +146,124 @@ def batch_predict():
                 continue
             
             prediction, error = predict_complexity(text)
-            
             if error:
                 results.append({
-                    'text': text,
-                    'success': False,
+                    'text': text[:100] + '...' if len(text) > 100 else text,
                     'error': error
                 })
             else:
                 level, description, color = interpret_complexity(prediction)
                 results.append({
-                    'text': text,
-                    'success': True,
+                    'text': text[:100] + '...' if len(text) > 100 else text,
                     'score': float(prediction),
                     'level': level,
                     'description': description,
-                    'color': color
+                    'color': color,
+                    'progress': int(prediction * 100)
                 })
+                successful += 1
         
         return jsonify({
             'success': True,
             'results': results,
             'total': len(texts),
-            'successful': len([r for r in results if r['success']])
+            'successful': successful
         })
-    
+        
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': f'Server error: {str(e)}'
-        })
+        return jsonify({'success': False, 'error': f'Server error: {str(e)}'})
 
 @app.route('/upload', methods=['POST'])
-def upload_file():
-    """Handle file upload for batch prediction"""
+def upload():
+    """File upload endpoint"""
     try:
         if 'file' not in request.files:
-            return jsonify({
-                'success': False,
-                'error': 'No file uploaded'
-            })
+            return jsonify({'success': False, 'error': 'No file uploaded'})
         
         file = request.files['file']
-        
         if file.filename == '':
-            return jsonify({
-                'success': False,
-                'error': 'No file selected'
-            })
+            return jsonify({'success': False, 'error': 'No file selected'})
+        
+        if not file.filename.endswith('.csv'):
+            return jsonify({'success': False, 'error': 'Please upload a CSV file'})
         
         # Read CSV file
         try:
             df = pd.read_csv(file)
         except Exception as e:
-            return jsonify({
-                'success': False,
-                'error': f'Error reading CSV file: {str(e)}'
-            })
+            return jsonify({'success': False, 'error': f'Error reading CSV file: {str(e)}'})
         
         if 'text' not in df.columns:
-            return jsonify({
-                'success': False,
-                'error': 'CSV file must contain a "text" column'
-            })
+            return jsonify({'success': False, 'error': 'CSV file must contain a "text" column'})
         
-        texts = df['text'].tolist()
+        texts = df['text'].dropna().tolist()
+        if not texts:
+            return jsonify({'success': False, 'error': 'No valid texts found in CSV file'})
         
-        # Make predictions
+        # Process texts
         results = []
+        successful = 0
+        
         for text in texts:
             text = str(text).strip()
             if not text:
                 continue
             
             prediction, error = predict_complexity(text)
-            
             if error:
                 results.append({
-                    'text': text,
-                    'success': False,
+                    'text': text[:100] + '...' if len(text) > 100 else text,
                     'error': error
                 })
             else:
                 level, description, color = interpret_complexity(prediction)
                 results.append({
-                    'text': text,
-                    'success': True,
+                    'text': text[:100] + '...' if len(text) > 100 else text,
                     'score': float(prediction),
                     'level': level,
                     'description': description,
-                    'color': color
+                    'color': color,
+                    'progress': int(prediction * 100)
                 })
+                successful += 1
         
         return jsonify({
             'success': True,
             'results': results,
             'total': len(texts),
-            'successful': len([r for r in results if r['success']])
+            'successful': successful
         })
-    
+        
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': f'Server error: {str(e)}'
-        })
+        return jsonify({'success': False, 'error': f'Server error: {str(e)}'})
 
 @app.route('/health')
 def health():
     """Health check endpoint"""
-    model_loaded = model is not None
+    model_loaded = model is not None and tokenizer is not None
     return jsonify({
         'status': 'healthy',
         'model_loaded': model_loaded,
-        'device': str(device) if device else None
+        'version': '2.0'
     })
 
-if __name__ == '__main__':
-    # Load model on startup
-    print("Loading model...")
+# Load model on startup
+@app.before_first_request
+def initialize():
+    """Initialize the model before first request"""
     success, message = load_model()
-    print(message)
-    
+    if not success:
+        print(f"Warning: {message}")
+
+# For Vercel deployment
+if __name__ == '__main__':
+    # Load model
+    success, message = load_model()
     if success:
-        print("Starting Flask app...")
-        app.run(debug=True, host='0.0.0.0', port=5000)
+        print("Model loaded successfully!")
     else:
-        print("Failed to load model. Please train the model first.")
-        print("You can still run the app, but predictions will fail.")
-        app.run(debug=True, host='0.0.0.0', port=5000) 
+        print(f"Warning: {message}")
+    
+    # Run app
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False) 

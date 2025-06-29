@@ -88,6 +88,55 @@ python app.py
 # Visit http://localhost:5000
 ```
 
+## 🌐 Web Interface
+
+### Enhanced Features
+- **Detailed Score System**: Comprehensive explanation of complexity levels with examples
+- **Shakespeare Detection**: Specialized analysis for archaic language and literary devices
+- **Multiple Input Methods**: Single text, batch analysis, and CSV file upload
+- **Responsive Design**: Works seamlessly on desktop and mobile devices
+- **Professional UI/UX**: Modern interface with intuitive navigation
+
+### Local Development
+```bash
+python app.py
+# Visit http://localhost:5000
+```
+
+### Vercel Deployment 🚀
+
+The application is ready for Vercel deployment with enhanced features:
+
+#### Quick Deploy
+1. **Fork/Clone** this repository
+2. **Create Vercel Account** at [vercel.com](https://vercel.com)
+3. **Import Repository** in Vercel dashboard
+4. **Deploy** - Vercel will automatically detect Python configuration
+
+#### Manual Deploy
+```bash
+# Install Vercel CLI
+npm install -g vercel
+
+# Login and deploy
+vercel login
+vercel
+```
+
+#### Deployment Features
+- ✅ **Zero Configuration**: Automatic Python detection
+- ✅ **HTTPS**: Secure connections by default
+- ✅ **Global CDN**: Fast loading worldwide
+- ✅ **Auto-scaling**: Handles traffic spikes
+- ✅ **Custom Domains**: Easy domain setup
+
+#### Configuration Files
+- `vercel.json` - Vercel deployment configuration
+- `requirements.txt` - Python dependencies with specific versions
+- `app.py` - Optimized Flask application for serverless deployment
+
+For detailed deployment instructions, see [DEPLOYMENT.md](DEPLOYMENT.md).
+
 ## 📈 Training Results (v2.0)
 
 ### Dataset Statistics
