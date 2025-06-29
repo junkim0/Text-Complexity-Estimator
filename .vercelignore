@@ -1,0 +1,39 @@
+# Exclude heavy model files
+model/
+*.pth
+*.pkl
+*.bin
+
+# Exclude development files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.env
+
+# Exclude data files
+data/
+*.csv
+*.json
+evaluation_results/
+
+# Exclude development tools
+.git/
+.gitignore
+*.md
+*.txt
+train.py
+evaluate.py
+predict.py
+test_shakespeare.csv
+project_evolution_log.json
+
+# Keep only essential files for deployment
+# api/
+# templates/
+# vercel.json
+# requirements.txt 
