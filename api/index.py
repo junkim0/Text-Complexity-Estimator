@@ -1,73 +1,71 @@
 import os
 import json
+import torch
 import numpy as np
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, send_file
+from transformers import AutoTokenizer
 import pandas as pd
-import re
+from train import TextComplexityModel
 import io
+import base64
 
-# Initialize Flask app
-app = Flask(__name__, 
-           template_folder='../templates',
-           static_folder='../static')
+app = Flask(__name__)
 
-def estimate_complexity_simple(text):
-    """Simple rule-based complexity estimation for demo purposes"""
-    if not text or len(text.strip()) == 0:
-        return 0.1
+# Global variables for model
+model = None
+tokenizer = None
+config = None
+
+def load_model():
+    """Load the trained model and configuration"""
+    global model, tokenizer, config
     
-    # Calculate various complexity metrics
-    words = text.split()
-    sentences = len(re.split(r'[.!?]+', text))
+    model_dir = 'model/best'
     
-    if len(words) == 0:
-        return 0.1
+    # Check if model files exist
+    if not os.path.exists(os.path.join(model_dir, 'best_model.pth')):
+        return False, "Model files not found. Please train the model first."
     
-    # Average word length
-    avg_word_length = sum(len(word.strip('.,!?;:"()[]{}')) for word in words) / len(words)
+    try:
+        # Load configuration
+        with open(os.path.join(model_dir, 'config.json'), 'r') as f:
+            config = json.load(f)
+        
+        # Load tokenizer
+        tokenizer = AutoTokenizer.from_pretrained(model_dir)
+        
+        # Initialize model
+        model = TextComplexityModel(config['model_name'])
+        model.load_state_dict(torch.load(os.path.join(model_dir, 'best_model.pth'), map_location='cpu'))
+        model.eval()
+        
+        return True, "Model loaded successfully"
+    except Exception as e:
+        return False, f"Error loading model: {str(e)}"
+
+def predict_complexity(text):
+    """Predict complexity score for a single text"""
+    if model is None or tokenizer is None:
+        return None, "Model not loaded"
     
-    # Average sentence length
-    avg_sentence_length = len(words) / max(sentences, 1)
-    
-    # Count complex words (more than 6 characters)
-    complex_words = sum(1 for word in words if len(word.strip('.,!?;:"()[]{}')) > 6)
-    complex_word_ratio = complex_words / len(words)
-    
-    # Count archaic/formal words (simple heuristic)
-    archaic_patterns = [
-        r'\b(thou|thee|thy|thine|art|doth|hath|whence|whither|wherefore|albeit|forsooth)\b',
-        r'\b\w+eth\b',  # words ending in 'eth'
-        r'\b\w+st\b',   # words ending in 'st' (archaic verb forms)
-    ]
-    
-    archaic_count = 0
-    for pattern in archaic_patterns:
-        archaic_count += len(re.findall(pattern, text.lower()))
-    
-    archaic_ratio = archaic_count / len(words)
-    
-    # Calculate base complexity score
-    complexity = 0.0
-    
-    # Word length factor (0-0.3)
-    complexity += min(avg_word_length / 15, 0.3)
-    
-    # Sentence length factor (0-0.2)
-    complexity += min(avg_sentence_length / 25, 0.2)
-    
-    # Complex words factor (0-0.3)
-    complexity += complex_word_ratio * 0.3
-    
-    # Archaic language boost (can add up to 0.4)
-    if archaic_ratio > 0:
-        complexity += min(archaic_ratio * 2, 0.4)
-    
-    # Text length factor (longer texts tend to be more complex)
-    length_factor = min(len(text) / 1000, 0.2)
-    complexity += length_factor
-    
-    # Ensure score is between 0 and 1
-    return min(max(complexity, 0.1), 1.0)
+    try:
+        # Tokenize the text
+        encoding = tokenizer(
+            text,
+            truncation=True,
+            padding='max_length',
+            max_length=config['max_length'],
+            return_tensors='pt'
+        )
+        
+        # Make prediction
+        with torch.no_grad():
+            _, prediction = model(encoding['input_ids'], encoding['attention_mask'])
+            prediction = prediction.cpu().numpy()
+        
+        return prediction, None
+    except Exception as e:
+        return None, f"Prediction error: {str(e)}"
 
 def interpret_complexity(score):
     """Interpret the complexity score"""
@@ -109,8 +107,10 @@ def predict():
         if not text:
             return jsonify({'success': False, 'error': 'No text provided'})
         
-        # Make prediction using simple estimator
-        prediction = estimate_complexity_simple(text)
+        # Make prediction
+        prediction, error = predict_complexity(text)
+        if error:
+            return jsonify({'success': False, 'error': error})
         
         # Interpret result
         level, description, color = interpret_complexity(prediction)
@@ -121,9 +121,7 @@ def predict():
             'level': level,
             'description': description,
             'color': color,
-            'progress': int(prediction * 100),
-            'demo_mode': True,
-            'note': 'Running in demo mode with rule-based complexity estimation'
+            'progress': int(prediction * 100)
         })
         
     except Exception as e:
@@ -147,8 +145,13 @@ def batch_predict():
             if not text:
                 continue
             
-            try:
-                prediction = estimate_complexity_simple(text)
+            prediction, error = predict_complexity(text)
+            if error:
+                results.append({
+                    'text': text[:100] + '...' if len(text) > 100 else text,
+                    'error': error
+                })
+            else:
                 level, description, color = interpret_complexity(prediction)
                 results.append({
                     'text': text[:100] + '...' if len(text) > 100 else text,
@@ -159,19 +162,12 @@ def batch_predict():
                     'progress': int(prediction * 100)
                 })
                 successful += 1
-            except Exception as e:
-                results.append({
-                    'text': text[:100] + '...' if len(text) > 100 else text,
-                    'error': str(e)
-                })
         
         return jsonify({
             'success': True,
             'results': results,
             'total': len(texts),
-            'successful': successful,
-            'demo_mode': True,
-            'note': 'Running in demo mode with rule-based complexity estimation'
+            'successful': successful
         })
         
     except Exception as e:
@@ -188,12 +184,12 @@ def upload():
         if file.filename == '':
             return jsonify({'success': False, 'error': 'No file selected'})
         
-        if not file.filename or not file.filename.endswith('.csv'):
+        if not file.filename.endswith('.csv'):
             return jsonify({'success': False, 'error': 'Please upload a CSV file'})
         
         # Read CSV file
         try:
-            df = pd.read_csv(file.stream)
+            df = pd.read_csv(file)
         except Exception as e:
             return jsonify({'success': False, 'error': f'Error reading CSV file: {str(e)}'})
         
@@ -213,8 +209,13 @@ def upload():
             if not text:
                 continue
             
-            try:
-                prediction = estimate_complexity_simple(text)
+            prediction, error = predict_complexity(text)
+            if error:
+                results.append({
+                    'text': text[:100] + '...' if len(text) > 100 else text,
+                    'error': error
+                })
+            else:
                 level, description, color = interpret_complexity(prediction)
                 results.append({
                     'text': text[:100] + '...' if len(text) > 100 else text,
@@ -225,19 +226,12 @@ def upload():
                     'progress': int(prediction * 100)
                 })
                 successful += 1
-            except Exception as e:
-                results.append({
-                    'text': text[:100] + '...' if len(text) > 100 else text,
-                    'error': str(e)
-                })
         
         return jsonify({
             'success': True,
             'results': results,
             'total': len(texts),
-            'successful': successful,
-            'demo_mode': True,
-            'note': 'Running in demo mode with rule-based complexity estimation'
+            'successful': successful
         })
         
     except Exception as e:
@@ -246,16 +240,30 @@ def upload():
 @app.route('/health')
 def health():
     """Health check endpoint"""
+    model_loaded = model is not None and tokenizer is not None
     return jsonify({
         'status': 'healthy',
-        'model_loaded': False,
-        'demo_mode': True,
-        'version': '2.0-demo',
-        'note': 'Running in demo mode with rule-based complexity estimation'
+        'model_loaded': model_loaded,
+        'version': '2.0'
     })
 
-# For local development
+# Load model on startup
+@app.before_first_request
+def initialize():
+    """Initialize the model before first request"""
+    success, message = load_model()
+    if not success:
+        print(f"Warning: {message}")
+
+# For Vercel deployment
 if __name__ == '__main__':
+    # Load model
+    success, message = load_model()
+    if success:
+        print("Model loaded successfully!")
+    else:
+        print(f"Warning: {message}")
+    
     # Run app
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False) 
