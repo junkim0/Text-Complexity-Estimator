@@ -1,11 +1,12 @@
 from flask import Flask, request, jsonify
 import re
 
-# Initialize Flask app
+# Create Flask app instance
 app = Flask(__name__)
 
-# Simple HTML template
-HTML_TEMPLATE = '''<!DOCTYPE html>
+@app.route('/')
+def home():
+    return '''<!DOCTYPE html>
 <html>
 <head>
     <title>Text Complexity Estimator - Demo</title>
@@ -29,7 +30,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         
         <textarea id="text" placeholder="Enter text to analyze...">To be, or not to be, that is the question</textarea><br>
         <button onclick="analyze()">Analyze</button>
-        <button onclick="clear()">Clear</button>
+        <button onclick="clearText()">Clear</button>
         
         <div id="result" style="display:none;" class="result">
             <div id="score" class="score"></div>
@@ -68,55 +69,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }
     }
     
-    function clear() {
+    function clearText() {
         document.getElementById('text').value = '';
         document.getElementById('result').style.display = 'none';
     }
     </script>
 </body>
 </html>'''
-
-def simple_complexity(text):
-    """Ultra-simple complexity estimation"""
-    if not text:
-        return 0.1
-    
-    words = text.split()
-    if not words:
-        return 0.1
-    
-    # Basic metrics
-    avg_word_len = sum(len(w) for w in words) / len(words)
-    sentences = len([s for s in re.split(r'[.!?]+', text) if s.strip()])
-    avg_sent_len = len(words) / max(sentences, 1)
-    
-    # Archaic words
-    archaic = len(re.findall(r'\b(thou|thee|thy|art|doth|hath)\b', text.lower()))
-    
-    # Calculate score
-    score = 0.2  # base
-    score += min(avg_word_len / 20, 0.3)  # word length
-    score += min(avg_sent_len / 30, 0.2)  # sentence length
-    score += min(archaic / len(words) * 2, 0.3)  # archaic boost
-    
-    return min(max(score, 0.1), 1.0)
-
-def get_level(score):
-    """Get complexity level"""
-    if score < 0.3:
-        return "Beginner", "Simple text", "#28a745"
-    elif score < 0.5:
-        return "Elementary", "Basic vocabulary", "#17a2b8"
-    elif score < 0.7:
-        return "Intermediate", "Moderate complexity", "#ffc107"
-    elif score < 0.85:
-        return "Advanced", "Complex language", "#fd7e14"
-    else:
-        return "Expert", "Very complex text", "#dc3545"
-
-@app.route('/')
-def home():
-    return HTML_TEMPLATE
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -129,8 +88,38 @@ def predict():
         if not text:
             return jsonify({'success': False, 'error': 'Empty text'})
         
-        score = simple_complexity(text)
-        level, desc, color = get_level(score)
+        # Simple complexity calculation
+        words = text.split()
+        if not words:
+            return jsonify({'success': False, 'error': 'No words found'})
+        
+        # Basic metrics
+        avg_word_len = sum(len(w) for w in words) / len(words)
+        sentences = len([s for s in re.split(r'[.!?]+', text) if s.strip()])
+        avg_sent_len = len(words) / max(sentences, 1)
+        
+        # Archaic words
+        archaic = len(re.findall(r'\b(thou|thee|thy|art|doth|hath)\b', text.lower()))
+        
+        # Calculate score
+        score = 0.2  # base
+        score += min(avg_word_len / 20, 0.3)  # word length
+        score += min(avg_sent_len / 30, 0.2)  # sentence length
+        score += min(archaic / len(words) * 2, 0.3)  # archaic boost
+        
+        score = min(max(score, 0.1), 1.0)
+        
+        # Get level
+        if score < 0.3:
+            level, desc, color = "Beginner", "Simple text", "#28a745"
+        elif score < 0.5:
+            level, desc, color = "Elementary", "Basic vocabulary", "#17a2b8"
+        elif score < 0.7:
+            level, desc, color = "Intermediate", "Moderate complexity", "#ffc107"
+        elif score < 0.85:
+            level, desc, color = "Advanced", "Complex language", "#fd7e14"
+        else:
+            level, desc, color = "Expert", "Very complex text", "#dc3545"
         
         return jsonify({
             'success': True,
@@ -147,5 +136,6 @@ def predict():
 def health():
     return jsonify({'status': 'ok', 'version': 'demo'})
 
+# This is required for Vercel deployment
 if __name__ == '__main__':
     app.run(debug=False) 
