@@ -1,305 +1,151 @@
-import os
-import json
-import numpy as np
-from flask import Flask, request, jsonify, render_template_string
-import pandas as pd
+from flask import Flask, request, jsonify
 import re
-import io
 
-# Initialize Flask app with simpler configuration
+# Initialize Flask app
 app = Flask(__name__)
 
-# Simple HTML template embedded in the code to avoid path issues
-HTML_TEMPLATE = """
-<!DOCTYPE html>
-<html lang="en">
+# Simple HTML template
+HTML_TEMPLATE = '''<!DOCTYPE html>
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Text Complexity Estimator - Demo</title>
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-        }
-        .container {
-            background: white;
-            border-radius: 15px;
-            padding: 30px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-        }
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        .demo-badge {
-            background: #ff6b6b;
-            color: white;
-            padding: 5px 15px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: bold;
-            display: inline-block;
-            margin-bottom: 10px;
-        }
-        textarea {
-            width: 100%;
-            height: 120px;
-            padding: 15px;
-            border: 2px solid #e1e5e9;
-            border-radius: 8px;
-            font-size: 16px;
-            resize: vertical;
-        }
-        .btn {
-            background: #667eea;
-            color: white;
-            padding: 12px 24px;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            cursor: pointer;
-            margin: 10px 5px;
-        }
-        .btn:hover {
-            background: #5a6fd8;
-        }
-        .result {
-            margin-top: 20px;
-            padding: 20px;
-            border-radius: 8px;
-            background: #f8f9fa;
-        }
-        .score-display {
-            font-size: 24px;
-            font-weight: bold;
-            margin: 10px 0;
-        }
-        .complexity-level {
-            padding: 8px 16px;
-            border-radius: 20px;
-            color: white;
-            font-weight: bold;
-            display: inline-block;
-        }
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #f0f2f5; }
+        .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .demo-badge { background: #ff4757; color: white; padding: 5px 15px; border-radius: 15px; font-size: 12px; display: inline-block; margin-bottom: 15px; }
+        textarea { width: 100%; height: 100px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
+        button { background: #3742fa; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; margin: 10px 5px 0 0; }
+        button:hover { background: #2f3542; }
+        .result { margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px; }
+        .score { font-size: 20px; font-weight: bold; margin: 10px 0; }
+        .level { padding: 5px 10px; border-radius: 15px; color: white; font-weight: bold; display: inline-block; }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <div class="demo-badge">DEMO VERSION</div>
-            <h1>Text Complexity Estimator</h1>
-            <p>Analyze text complexity using AI-powered analysis</p>
-        </div>
+        <div class="demo-badge">DEMO VERSION</div>
+        <h1>Text Complexity Estimator</h1>
+        <p>Analyze text complexity with rule-based estimation</p>
         
-        <div>
-            <textarea id="textInput" placeholder="Enter your text here to analyze its complexity...">To be, or not to be, that is the question</textarea>
-            <br>
-            <button class="btn" onclick="analyzeText()">Analyze Complexity</button>
-            <button class="btn" onclick="clearText()">Clear</button>
-        </div>
+        <textarea id="text" placeholder="Enter text to analyze...">To be, or not to be, that is the question</textarea><br>
+        <button onclick="analyze()">Analyze</button>
+        <button onclick="clear()">Clear</button>
         
-        <div id="result" class="result" style="display: none;">
-            <h3>Analysis Result</h3>
-            <div id="scoreDisplay" class="score-display"></div>
-            <div id="levelDisplay" class="complexity-level"></div>
-            <p id="description"></p>
-            <p><small id="note" style="color: #666;"></small></p>
+        <div id="result" style="display:none;" class="result">
+            <div id="score" class="score"></div>
+            <div id="level" class="level"></div>
+            <p id="desc"></p>
+            <small id="note" style="color:#666;"></small>
         </div>
     </div>
-
+    
     <script>
-        async function analyzeText() {
-            const text = document.getElementById('textInput').value.trim();
-            if (!text) {
-                alert('Please enter some text to analyze');
-                return;
+    async function analyze() {
+        const text = document.getElementById('text').value.trim();
+        if (!text) { alert('Enter some text'); return; }
+        
+        try {
+            const res = await fetch('/predict', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({text: text})
+            });
+            const data = await res.json();
+            
+            if (data.success) {
+                document.getElementById('score').textContent = 'Score: ' + data.score.toFixed(3);
+                const levelEl = document.getElementById('level');
+                levelEl.textContent = data.level;
+                levelEl.style.backgroundColor = data.color;
+                document.getElementById('desc').textContent = data.description;
+                document.getElementById('note').textContent = data.note || '';
+                document.getElementById('result').style.display = 'block';
+            } else {
+                alert('Error: ' + data.error);
             }
-
-            try {
-                const response = await fetch('/predict', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ text: text })
-                });
-
-                const data = await response.json();
-                
-                if (data.success) {
-                    document.getElementById('scoreDisplay').textContent = `Complexity Score: ${data.score.toFixed(3)}`;
-                    
-                    const levelEl = document.getElementById('levelDisplay');
-                    levelEl.textContent = data.level;
-                    levelEl.style.backgroundColor = data.color;
-                    
-                    document.getElementById('description').textContent = data.description;
-                    document.getElementById('note').textContent = data.note || '';
-                    document.getElementById('result').style.display = 'block';
-                } else {
-                    alert('Error: ' + data.error);
-                }
-            } catch (error) {
-                alert('Error analyzing text: ' + error.message);
-            }
+        } catch (e) {
+            alert('Error: ' + e.message);
         }
-
-        function clearText() {
-            document.getElementById('textInput').value = '';
-            document.getElementById('result').style.display = 'none';
-        }
+    }
+    
+    function clear() {
+        document.getElementById('text').value = '';
+        document.getElementById('result').style.display = 'none';
+    }
     </script>
 </body>
-</html>
-"""
+</html>'''
 
-def estimate_complexity_simple(text):
-    """Simple rule-based complexity estimation for demo purposes"""
-    try:
-        if not text or len(text.strip()) == 0:
-            return 0.1
-        
-        # Calculate various complexity metrics
-        words = text.split()
-        sentences = len(re.split(r'[.!?]+', text))
-        
-        if len(words) == 0:
-            return 0.1
-        
-        # Average word length
-        avg_word_length = sum(len(word.strip('.,!?;:"()[]{}')) for word in words) / len(words)
-        
-        # Average sentence length
-        avg_sentence_length = len(words) / max(sentences, 1)
-        
-        # Count complex words (more than 6 characters)
-        complex_words = sum(1 for word in words if len(word.strip('.,!?;:"()[]{}')) > 6)
-        complex_word_ratio = complex_words / len(words)
-        
-        # Count archaic/formal words (simple heuristic)
-        archaic_patterns = [
-            r'\b(thou|thee|thy|thine|art|doth|hath|whence|whither|wherefore|albeit|forsooth)\b',
-            r'\b\w+eth\b',  # words ending in 'eth'
-            r'\b\w+st\b',   # words ending in 'st' (archaic verb forms)
-        ]
-        
-        archaic_count = 0
-        for pattern in archaic_patterns:
-            archaic_count += len(re.findall(pattern, text.lower()))
-        
-        archaic_ratio = archaic_count / len(words)
-        
-        # Calculate base complexity score
-        complexity = 0.0
-        
-        # Word length factor (0-0.3)
-        complexity += min(avg_word_length / 15, 0.3)
-        
-        # Sentence length factor (0-0.2)
-        complexity += min(avg_sentence_length / 25, 0.2)
-        
-        # Complex words factor (0-0.3)
-        complexity += complex_word_ratio * 0.3
-        
-        # Archaic language boost (can add up to 0.4)
-        if archaic_ratio > 0:
-            complexity += min(archaic_ratio * 2, 0.4)
-        
-        # Text length factor (longer texts tend to be more complex)
-        length_factor = min(len(text) / 1000, 0.2)
-        complexity += length_factor
-        
-        # Ensure score is between 0 and 1
-        return min(max(complexity, 0.1), 1.0)
-    except Exception:
-        # Fallback to simple estimation if anything fails
-        return 0.5
+def simple_complexity(text):
+    """Ultra-simple complexity estimation"""
+    if not text:
+        return 0.1
+    
+    words = text.split()
+    if not words:
+        return 0.1
+    
+    # Basic metrics
+    avg_word_len = sum(len(w) for w in words) / len(words)
+    sentences = len([s for s in re.split(r'[.!?]+', text) if s.strip()])
+    avg_sent_len = len(words) / max(sentences, 1)
+    
+    # Archaic words
+    archaic = len(re.findall(r'\b(thou|thee|thy|art|doth|hath)\b', text.lower()))
+    
+    # Calculate score
+    score = 0.2  # base
+    score += min(avg_word_len / 20, 0.3)  # word length
+    score += min(avg_sent_len / 30, 0.2)  # sentence length
+    score += min(archaic / len(words) * 2, 0.3)  # archaic boost
+    
+    return min(max(score, 0.1), 1.0)
 
-def interpret_complexity(score):
-    """Interpret the complexity score"""
-    try:
-        if score < 0.3:
-            level = "Beginner"
-            description = "Very simple text, suitable for early readers"
-            color = "#28a745"
-        elif score < 0.5:
-            level = "Elementary"
-            description = "Simple text with basic vocabulary and structure"
-            color = "#17a2b8"
-        elif score < 0.7:
-            level = "Intermediate"
-            description = "Moderate complexity with varied vocabulary"
-            color = "#ffc107"
-        elif score < 0.85:
-            level = "Advanced"
-            description = "Complex text with sophisticated language"
-            color = "#fd7e14"
-        else:
-            level = "Expert"
-            description = "Very complex text requiring advanced reading skills"
-            color = "#dc3545"
-        
-        return level, description, color
-    except Exception:
-        return "Unknown", "Unable to determine complexity", "#6c757d"
+def get_level(score):
+    """Get complexity level"""
+    if score < 0.3:
+        return "Beginner", "Simple text", "#28a745"
+    elif score < 0.5:
+        return "Elementary", "Basic vocabulary", "#17a2b8"
+    elif score < 0.7:
+        return "Intermediate", "Moderate complexity", "#ffc107"
+    elif score < 0.85:
+        return "Advanced", "Complex language", "#fd7e14"
+    else:
+        return "Expert", "Very complex text", "#dc3545"
 
 @app.route('/')
-def index():
-    """Main page"""
-    return render_template_string(HTML_TEMPLATE)
+def home():
+    return HTML_TEMPLATE
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    """Single text prediction endpoint"""
     try:
         data = request.get_json()
-        if not data:
-            return jsonify({'success': False, 'error': 'No JSON data provided'})
-            
-        text = data.get('text', '').strip()
-        
-        if not text:
+        if not data or 'text' not in data:
             return jsonify({'success': False, 'error': 'No text provided'})
         
-        # Make prediction using simple estimator
-        prediction = estimate_complexity_simple(text)
+        text = data['text'].strip()
+        if not text:
+            return jsonify({'success': False, 'error': 'Empty text'})
         
-        # Interpret result
-        level, description, color = interpret_complexity(prediction)
+        score = simple_complexity(text)
+        level, desc, color = get_level(score)
         
         return jsonify({
             'success': True,
-            'score': float(prediction),
+            'score': score,
             'level': level,
-            'description': description,
+            'description': desc,
             'color': color,
-            'progress': int(prediction * 100),
-            'demo_mode': True,
-            'note': 'Running in demo mode with rule-based complexity estimation'
+            'note': 'Demo version with rule-based estimation'
         })
-        
     except Exception as e:
-        return jsonify({'success': False, 'error': f'Server error: {str(e)}'})
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/health')
 def health():
-    """Health check endpoint"""
-    return jsonify({
-        'status': 'healthy',
-        'model_loaded': False,
-        'demo_mode': True,
-        'version': '2.0-demo',
-        'note': 'Running in demo mode with rule-based complexity estimation'
-    })
+    return jsonify({'status': 'ok', 'version': 'demo'})
 
-# Export the Flask app for Vercel
-# This is required for Vercel serverless deployment
 if __name__ == '__main__':
-    # Run app locally
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False) 
+    app.run(debug=False) 
