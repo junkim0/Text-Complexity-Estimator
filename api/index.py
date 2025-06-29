@@ -8,8 +8,8 @@ import io
 
 # Initialize Flask app
 app = Flask(__name__, 
-           template_folder='../templates',
-           static_folder='../static')
+           template_folder=os.path.join(os.path.dirname(os.path.dirname(__file__)), 'templates'),
+           static_folder=os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static'))
 
 def estimate_complexity_simple(text):
     """Simple rule-based complexity estimation for demo purposes"""
@@ -254,8 +254,9 @@ def health():
         'note': 'Running in demo mode with rule-based complexity estimation'
     })
 
-# For local development
+# Export the Flask app for Vercel
+# This is required for Vercel serverless deployment
 if __name__ == '__main__':
-    # Run app
+    # Run app locally
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False) 
