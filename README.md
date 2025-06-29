@@ -2,6 +2,20 @@
 
 A transformer-based text complexity prediction system that analyzes the readability and complexity of text using BERT and advanced neural architectures.
 
+## 🌟 Live Demo & Versions
+
+- 🚀 **[Live Demo](https://your-vercel-app.vercel.app)** - Lightweight version deployed on Vercel
+- 🧠 **Full ML Version** - Complete BERT model (available in `full-model` branch)
+- 📚 **Branch Structure** - See [BRANCHES.md](BRANCHES.md) for detailed information
+
+### Version Comparison
+| Feature | Demo Version | Full Version |
+|---------|-------------|--------------|
+| **Deployment** | ✅ Vercel (fast) | 🏠 Local only |
+| **Accuracy** | Good (rule-based) | Excellent (BERT) |
+| **Shakespeare Detection** | Pattern matching | ML-learned |
+| **Size** | ~5MB | ~500MB |
+
 ## 🚀 Latest Updates (v2.0)
 
 ### Enhanced Shakespeare Detection
