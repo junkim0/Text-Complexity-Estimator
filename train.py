@@ -46,93 +46,105 @@ class TextComplexityDataset(Dataset):
         }
 
 class TextComplexityModel(nn.Module):
-    """BERT-based model for text complexity prediction"""
+    """Enhanced BERT-based model for text complexity prediction"""
     
-    def __init__(self, model_name='bert-base-uncased', dropout=0.1):
+    def __init__(self, model_name='bert-base-uncased', dropout=0.2):
         super(TextComplexityModel, self).__init__()
         self.bert = BertModel.from_pretrained(model_name)
         self.dropout = nn.Dropout(dropout)
-        self.regressor = nn.Sequential(
-            nn.Linear(self.bert.config.hidden_size, 512),
+        
+        # Enhanced architecture with more layers and attention
+        self.feature_extractor = nn.Sequential(
+            nn.Linear(self.bert.config.hidden_size, 768),
+            nn.LayerNorm(768),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(512, 128),
+            nn.Linear(768, 512),
+            nn.LayerNorm(512),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(128, 1)
+            nn.Linear(512, 256),
+            nn.LayerNorm(256),
+            nn.ReLU(),
+            nn.Dropout(dropout)
+        )
+        
+        # Multiple regression heads for better complexity prediction
+        self.complexity_head = nn.Sequential(
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(64, 1)
+        )
+        
+        # Additional features for archaic language detection
+        self.archaic_detector = nn.Sequential(
+            nn.Linear(256, 64),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Linear(32, 1),
+            nn.Sigmoid()
+        )
+        
+        # Combine features
+        self.final_regressor = nn.Sequential(
+            nn.Linear(2, 32),  # 1 from complexity + 1 from archaic
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(32, 1)
         )
     
     def forward(self, input_ids, attention_mask, labels=None):
         outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
         pooled_output = outputs.pooler_output
         pooled_output = self.dropout(pooled_output)
-        logits = self.regressor(pooled_output)
+        
+        # Extract features
+        features = self.feature_extractor(pooled_output)
+        
+        # Get complexity prediction
+        complexity_pred = self.complexity_head(features)
+        
+        # Get archaic language detection
+        archaic_score = self.archaic_detector(features)
+        
+        # Combine predictions
+        combined_features = torch.cat([complexity_pred, archaic_score], dim=1)
+        final_prediction = self.final_regressor(combined_features)
+        
+        # Boost score if archaic language is detected
+        final_prediction = final_prediction + (archaic_score * 0.1)
+        
+        # Ensure prediction is in [0, 1] range
+        final_prediction = torch.sigmoid(final_prediction)
         
         loss = None
         if labels is not None:
             loss_fct = nn.MSELoss()
-            loss = loss_fct(logits.squeeze(), labels)
+            loss = loss_fct(final_prediction.squeeze(), labels)
         
-        return loss, logits.squeeze()
+        return loss, final_prediction.squeeze()
 
 def load_data(data_path):
-    """Load and preprocess the CommonLit dataset"""
-    print("Loading dataset...")
+    """Load and preprocess the enhanced dataset"""
+    print("Loading enhanced dataset...")
     
-    # For demo purposes, create a synthetic dataset
-    # In practice, you would load the actual CommonLit dataset
-    np.random.seed(42)
-    n_samples = 1000
+    try:
+        # Try to load the enhanced dataset first
+        df = pd.read_csv('data/enhanced_readability.csv')
+        print(f"Loaded enhanced dataset with {len(df)} samples")
+    except FileNotFoundError:
+        # Fallback to original dataset
+        print("Enhanced dataset not found, using original dataset...")
+        df = pd.read_csv(data_path)
+        print(f"Loaded original dataset with {len(df)} samples")
     
-    # Generate synthetic texts with varying complexity
-    simple_texts = [
-        "The cat sat on the mat.",
-        "I like to read books.",
-        "The sun is bright today.",
-        "She walks to school every day.",
-        "The dog runs in the park."
-    ]
-    
-    complex_texts = [
-        "The intricate mechanisms underlying quantum entanglement continue to perplex even the most distinguished physicists in the field.",
-        "Socioeconomic disparities manifest themselves through multifaceted channels, perpetuating cycles of inequality across generations.",
-        "The epistemological foundations of modern science rest upon empirical observation and rigorous methodological frameworks.",
-        "Constitutional jurisprudence necessitates careful consideration of both textual interpretation and historical context.",
-        "Metacognitive strategies enable learners to monitor and regulate their cognitive processes effectively."
-    ]
-    
-    texts = []
-    targets = []
-    
-    for _ in range(n_samples // 2):
-        # Simple texts (lower complexity scores)
-        text = np.random.choice(simple_texts)
-        texts.append(text)
-        targets.append(np.random.uniform(0.1, 0.4))
-        
-        # Complex texts (higher complexity scores)
-        text = np.random.choice(complex_texts)
-        texts.append(text)
-        targets.append(np.random.uniform(0.6, 0.9))
-    
-    # Add some medium complexity texts
-    medium_texts = [
-        "The weather forecast predicts rain for tomorrow.",
-        "Students should complete their homework assignments.",
-        "The restaurant serves delicious Italian food.",
-        "Technology continues to advance rapidly.",
-        "Exercise is important for maintaining good health."
-    ]
-    
-    for _ in range(n_samples // 4):
-        text = np.random.choice(medium_texts)
-        texts.append(text)
-        targets.append(np.random.uniform(0.4, 0.6))
-    
-    return pd.DataFrame({
-        'text': texts,
-        'target': targets
-    })
+    return df
 
 def train_model(model, train_dataloader, val_dataloader, device, args):
     """Train the model"""
@@ -276,12 +288,7 @@ def main():
     print(f"Using device: {device}")
     
     # Load data
-    if os.path.exists(args.data_path):
-        df = pd.read_csv(args.data_path)
-    else:
-        print("Dataset not found, creating synthetic dataset...")
-        df = load_data(args.data_path)
-        df.to_csv(args.data_path, index=False)
+    df = load_data(args.data_path)
     
     # Split data
     train_df, temp_df = train_test_split(df, test_size=args.test_size + args.val_size, random_state=args.seed)

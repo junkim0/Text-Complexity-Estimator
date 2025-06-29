@@ -1,0 +1,4 @@
+model/best/*.pth
+model/best/training_curves.png
+evaluation_results/
+data/readability.csv 
