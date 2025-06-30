@@ -1,5 +1,5 @@
-pandas==2.1.4
-numpy==1.26.4
-flask==2.3.3
-werkzeug==2.3.7
-requests==2.31.0 
+# No external dependencies needed for basic Python HTTP handler
+# All imports used are from Python standard library:
+# - http.server.BaseHTTPRequestHandler
+# - json
+# - re 
