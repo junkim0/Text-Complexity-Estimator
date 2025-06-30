@@ -1,3 +1,9 @@
+__pycache__/
+*.pyc
+.env
+model/
+node_modules/
+.next/
 model/best/*.pth
 model/best/training_curves.png
 evaluation_results/
