@@ -14,11 +14,11 @@ export default function handler(req, res) {
     res.setHeader('Content-Type', 'text/html');
     res.status(200).send(`
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>텍스트 복잡도 분석기</title>
+    <title>Text Complexity Estimator</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -147,24 +147,24 @@ export default function handler(req, res) {
 </head>
 <body>
     <div class="container">
-        <h1>🔍 텍스트 복잡도 분석기</h1>
+        <h1>🔍 Text Complexity Estimator</h1>
         
         <div class="status">
-            ✅ 시스템이 정상적으로 작동 중입니다!
+            ✅ System is working perfectly!
         </div>
         
-        <textarea id="textInput" placeholder="분석할 텍스트를 입력하세요...">To be, or not to be, that is the question: Whether 'tis nobler in the mind to suffer the slings and arrows of outrageous fortune, or to take arms against a sea of troubles.</textarea>
+        <textarea id="textInput" placeholder="Enter text to analyze...">To be, or not to be, that is the question: Whether 'tis nobler in the mind to suffer the slings and arrows of outrageous fortune, or to take arms against a sea of troubles.</textarea>
         
         <div class="examples">
-            <button class="example-btn" onclick="setExample('simple')">간단한 텍스트</button>
-            <button class="example-btn" onclick="setExample('shakespeare')">셰익스피어</button>
-            <button class="example-btn" onclick="setExample('academic')">학술 텍스트</button>
-            <button class="example-btn" onclick="setExample('korean')">한국어 텍스트</button>
+            <button class="example-btn" onclick="setExample('simple')">Simple Text</button>
+            <button class="example-btn" onclick="setExample('shakespeare')">Shakespeare</button>
+            <button class="example-btn" onclick="setExample('academic')">Academic Text</button>
+            <button class="example-btn" onclick="setExample('complex')">Complex Text</button>
         </div>
         
         <br>
-        <button onclick="analyzeText()" id="analyzeBtn">🔍 텍스트 분석하기</button>
-        <button onclick="clearAll()" id="clearBtn">🗑️ 초기화</button>
+        <button onclick="analyzeText()" id="analyzeBtn">🔍 Analyze Text</button>
+        <button onclick="clearAll()" id="clearBtn">🗑️ Clear</button>
         
         <div id="result" style="display: none;"></div>
     </div>
@@ -174,7 +174,7 @@ export default function handler(req, res) {
             simple: "The cat sat on the mat. It was a sunny day. The cat was happy.",
             shakespeare: "To be, or not to be, that is the question: Whether 'tis nobler in the mind to suffer the slings and arrows of outrageous fortune, or to take arms against a sea of troubles.",
             academic: "The methodology employed in this comprehensive study utilizes sophisticated statistical analyses to examine the multifaceted relationships between various socioeconomic variables and their corresponding impacts on educational outcomes.",
-            korean: "오늘은 날씨가 매우 좋습니다. 햇살이 따뜻하고 바람이 시원해서 산책하기에 완벽한 날입니다."
+            complex: "The epistemological implications of poststructuralist hermeneutics necessitate a comprehensive reconceptualization of ontological paradigms within contemporary phenomenological discourse."
         };
 
         function setExample(type) {
@@ -192,14 +192,14 @@ export default function handler(req, res) {
             const analyzeBtn = document.getElementById('analyzeBtn');
             
             if (!text) {
-                alert('분석할 텍스트를 입력해주세요.');
+                alert('Please enter text to analyze.');
                 return;
             }
             
             analyzeBtn.disabled = true;
-            analyzeBtn.textContent = '분석 중...';
+            analyzeBtn.textContent = 'Analyzing...';
             
-            resultDiv.innerHTML = '<div class="loading">텍스트를 분석하고 있습니다...</div>';
+            resultDiv.innerHTML = '<div class="loading">Analyzing text...</div>';
             resultDiv.style.display = 'block';
             
             try {
@@ -219,21 +219,21 @@ export default function handler(req, res) {
                         <div class="level">\${data.level}</div>
                         <div class="description">\${data.description}</div>
                         <div style="margin-top: 15px; font-size: 0.9em; color: #666;">
-                            <strong>분석 결과:</strong><br>
-                            • 평균 단어 길이: \${data.details.avgWordLength.toFixed(1)}자<br>
-                            • 평균 문장 길이: \${data.details.avgSentenceLength.toFixed(1)}단어<br>
-                            • 고어/문어체 단어: \${data.details.archaicWords}개<br>
-                            • 전체 단어 수: \${data.details.totalWords}개
+                            <strong>Analysis Details:</strong><br>
+                            • Average word length: \${data.details.avgWordLength.toFixed(1)} characters<br>
+                            • Average sentence length: \${data.details.avgSentenceLength.toFixed(1)} words<br>
+                            • Archaic/literary words: \${data.details.archaicWords}<br>
+                            • Total words: \${data.details.totalWords}
                         </div>
                     \`;
                 } else {
-                    resultDiv.innerHTML = \`<div class="error">오류: \${data.error}</div>\`;
+                    resultDiv.innerHTML = \`<div class="error">Error: \${data.error}</div>\`;
                 }
             } catch (error) {
-                resultDiv.innerHTML = \`<div class="error">분석 중 오류가 발생했습니다: \${error.message}</div>\`;
+                resultDiv.innerHTML = \`<div class="error">Analysis error: \${error.message}</div>\`;
             } finally {
                 analyzeBtn.disabled = false;
-                analyzeBtn.textContent = '🔍 텍스트 분석하기';
+                analyzeBtn.textContent = '🔍 Analyze Text';
             }
         }
         
@@ -257,7 +257,7 @@ export default function handler(req, res) {
       if (!text || !text.trim()) {
         res.status(400).json({
           success: false,
-          error: '분석할 텍스트를 입력해주세요.'
+          error: 'Please provide text to analyze.'
         });
         return;
       }
@@ -268,13 +268,13 @@ export default function handler(req, res) {
     } catch (error) {
       res.status(500).json({
         success: false,
-        error: '텍스트 분석 중 오류가 발생했습니다: ' + error.message
+        error: 'Text analysis error: ' + error.message
       });
     }
     return;
   }
   
-  res.status(405).json({ error: '지원하지 않는 HTTP 메서드입니다.' });
+  res.status(405).json({ error: 'Method not allowed' });
 }
 
 function analyzeTextComplexity(text) {
@@ -284,7 +284,7 @@ function analyzeTextComplexity(text) {
   if (words.length === 0) {
     return {
       success: false,
-      error: '분석할 단어를 찾을 수 없습니다.'
+      error: 'No words found to analyze.'
     };
   }
   
@@ -324,20 +324,20 @@ function analyzeTextComplexity(text) {
   let level, description;
   
   if (score < 0.3) {
-    level = "초급 (Beginner)";
-    description = "간단하고 이해하기 쉬운 텍스트입니다.";
+    level = "Beginner";
+    description = "Simple and easy to understand text.";
   } else if (score < 0.5) {
-    level = "기초 (Elementary)";
-    description = "기본적인 어휘와 문장 구조를 사용한 텍스트입니다.";
+    level = "Elementary";
+    description = "Basic vocabulary and sentence structure.";
   } else if (score < 0.7) {
-    level = "중급 (Intermediate)";
-    description = "적당한 복잡도를 가진 텍스트입니다.";
+    level = "Intermediate";
+    description = "Moderate complexity text.";
   } else if (score < 0.85) {
-    level = "고급 (Advanced)";
-    description = "복잡한 언어와 구조를 사용한 텍스트입니다.";
+    level = "Advanced";
+    description = "Complex language and structure.";
   } else {
-    level = "전문가 (Expert)";
-    description = "매우 복잡하고 전문적인 텍스트입니다.";
+    level = "Expert";
+    description = "Very complex and professional text.";
   }
   
   return {
