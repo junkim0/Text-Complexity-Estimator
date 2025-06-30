@@ -1,97 +1,123 @@
-from http.server import BaseHTTPRequestHandler
 import json
 import re
+from urllib.parse import parse_qs
 
-class handler(BaseHTTPRequestHandler):
+def handler(request, context):
+    """Simple serverless function handler for Vercel"""
     
-    def do_GET(self):
-        if self.path == '/':
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            self.wfile.write(self.get_home_html().encode('utf-8'))
-        elif self.path == '/health':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps({'status': 'ok', 'version': 'demo'}).encode('utf-8'))
+    # Get request method and path
+    method = request.get('httpMethod', 'GET')
+    path = request.get('path', '/')
+    
+    if method == 'GET':
+        if path == '/' or path == '':
+            return {
+                'statusCode': 200,
+                'headers': {'Content-Type': 'text/html'},
+                'body': get_home_html()
+            }
+        elif path == '/health':
+            return {
+                'statusCode': 200,
+                'headers': {'Content-Type': 'application/json'},
+                'body': json.dumps({'status': 'ok', 'version': 'demo'})
+            }
         else:
-            self.send_response(404)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps({'error': 'Not found'}).encode('utf-8'))
+            return {
+                'statusCode': 404,
+                'headers': {'Content-Type': 'application/json'},
+                'body': json.dumps({'error': 'Not found'})
+            }
     
-    def do_POST(self):
-        if self.path == '/predict':
+    elif method == 'POST':
+        if path == '/predict':
             try:
-                content_length = int(self.headers['Content-Length'])
-                post_data = self.rfile.read(content_length)
-                data = json.loads(post_data.decode('utf-8'))
+                # Get request body
+                body = request.get('body', '')
+                if isinstance(body, bytes):
+                    body = body.decode('utf-8')
+                
+                data = json.loads(body) if body else {}
                 
                 if not data or 'text' not in data:
-                    self.send_error_response(400, 'No text provided')
-                    return
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json'},
+                        'body': json.dumps({'success': False, 'error': 'No text provided'})
+                    }
                 
                 text = data['text'].strip()
                 if not text:
-                    self.send_error_response(400, 'Empty text')
-                    return
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json'},
+                        'body': json.dumps({'success': False, 'error': 'Empty text'})
+                    }
                 
-                result = self.analyze_text(text)
+                result = analyze_text(text)
                 
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps(result).encode('utf-8'))
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json'},
+                    'body': json.dumps(result)
+                }
                 
             except Exception as e:
-                self.send_error_response(500, str(e))
+                return {
+                    'statusCode': 500,
+                    'headers': {'Content-Type': 'application/json'},
+                    'body': json.dumps({'success': False, 'error': str(e)})
+                }
         else:
-            self.send_response(404)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps({'error': 'Not found'}).encode('utf-8'))
+            return {
+                'statusCode': 404,
+                'headers': {'Content-Type': 'application/json'},
+                'body': json.dumps({'error': 'Not found'})
+            }
     
-    def send_error_response(self, code, message):
-        self.send_response(code)
-        self.send_header('Content-type', 'application/json')
-        self.end_headers()
-        self.wfile.write(json.dumps({'success': False, 'error': message}).encode('utf-8'))
-    
-    def analyze_text(self, text):
-        words = text.split()
-        if not words:
-            return {'success': False, 'error': 'No words found'}
-        
-        # Simple complexity calculation
-        avg_word_len = sum(len(w) for w in words) / len(words)
-        sentences = len([s for s in re.split(r'[.!?]+', text) if s.strip()])
-        avg_sent_len = len(words) / max(sentences, 1)
-        archaic = len(re.findall(r'\b(thou|thee|thy|art|doth|hath)\b', text.lower()))
-        
-        score = 0.2 + min(avg_word_len / 20, 0.3) + min(avg_sent_len / 30, 0.2) + min(archaic / len(words) * 2, 0.3)
-        score = min(max(score, 0.1), 1.0)
-        
-        if score < 0.3:
-            level, desc = "Beginner", "Simple text"
-        elif score < 0.5:
-            level, desc = "Elementary", "Basic vocabulary"
-        elif score < 0.7:
-            level, desc = "Intermediate", "Moderate complexity"
-        elif score < 0.85:
-            level, desc = "Advanced", "Complex language"
-        else:
-            level, desc = "Expert", "Very complex text"
-        
+    else:
         return {
-            'success': True,
-            'score': score,
-            'level': level,
-            'description': desc
+            'statusCode': 405,
+            'headers': {'Content-Type': 'application/json'},
+            'body': json.dumps({'error': 'Method not allowed'})
         }
+
+def analyze_text(text):
+    """Analyze text complexity"""
+    words = text.split()
+    if not words:
+        return {'success': False, 'error': 'No words found'}
     
-    def get_home_html(self):
-        return '''<!DOCTYPE html>
+    # Simple complexity calculation
+    avg_word_len = sum(len(w) for w in words) / len(words)
+    sentences = len([s for s in re.split(r'[.!?]+', text) if s.strip()])
+    avg_sent_len = len(words) / max(sentences, 1)
+    archaic = len(re.findall(r'\b(thou|thee|thy|art|doth|hath)\b', text.lower()))
+    
+    score = 0.2 + min(avg_word_len / 20, 0.3) + min(avg_sent_len / 30, 0.2) + min(archaic / len(words) * 2, 0.3)
+    score = min(max(score, 0.1), 1.0)
+    
+    if score < 0.3:
+        level, desc = "Beginner", "Simple text"
+    elif score < 0.5:
+        level, desc = "Elementary", "Basic vocabulary"
+    elif score < 0.7:
+        level, desc = "Intermediate", "Moderate complexity"
+    elif score < 0.85:
+        level, desc = "Advanced", "Complex language"
+    else:
+        level, desc = "Expert", "Very complex text"
+    
+    return {
+        'success': True,
+        'score': score,
+        'level': level,
+        'description': desc
+    }
+
+def get_home_html():
+    """Return the home page HTML"""
+    return '''<!DOCTYPE html>
 <html>
 <head>
     <title>Text Complexity Estimator</title>
@@ -104,6 +130,7 @@ class handler(BaseHTTPRequestHandler):
 </head>
 <body>
     <h1>Text Complexity Estimator</h1>
+    <p>Working! This is a demo version.</p>
     <textarea id="text" placeholder="Enter text to analyze...">To be, or not to be, that is the question</textarea><br>
     <button onclick="analyze()">Analyze</button>
     
