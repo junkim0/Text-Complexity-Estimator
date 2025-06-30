@@ -46,7 +46,7 @@ def home():
         if (!text) { alert('Enter some text'); return; }
         
         try {
-            const res = await fetch('/predict', {
+            const res = await fetch('/api/predict', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({text: text})
@@ -78,6 +78,7 @@ def home():
 </html>'''
 
 @app.route('/predict', methods=['POST'])
+@app.route('/api/predict', methods=['POST'])
 def predict():
     try:
         data = request.get_json()
@@ -133,9 +134,10 @@ def predict():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/health')
+@app.route('/api/health')
 def health():
     return jsonify({'status': 'ok', 'version': 'demo'})
 
-# This is required for Vercel deployment
+# For local development
 if __name__ == '__main__':
     app.run(debug=False) 
