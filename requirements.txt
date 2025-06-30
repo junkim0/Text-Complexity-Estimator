@@ -1,5 +1,0 @@
-# No external dependencies needed for basic Python HTTP handler
-# All imports used are from Python standard library:
-# - http.server.BaseHTTPRequestHandler
-# - json
-# - re 
